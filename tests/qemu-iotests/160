@@ -55,10 +55,11 @@ for skip in $TEST_SKIP_BLOCKS; do
     echo
     echo "== Converting the image with dd with skip=$skip =="
 
-    $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" skip="$skip" -O "$IMGFMT" \
-        2> /dev/null
+    $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" skip="$skip" conv=notrunc  \
+        -O "$IMGFMT" 2> /dev/null
     TEST_IMG="$TEST_IMG.out" _check_test_img
-    dd if="$TEST_IMG" of="$TEST_IMG.out.dd" skip="$skip" status=none
+    dd if="$TEST_IMG" of="$TEST_IMG.out.dd" skip="$skip" conv=notrunc \
+        status=none
 
     echo
     echo "== Compare the images with qemu-img compare =="

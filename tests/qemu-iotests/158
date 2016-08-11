@@ -53,7 +53,7 @@ $QEMU_IO -c "write -P 0xa 0 $size" "$TEST_IMG" | _filter_qemu_io
 echo
 echo "== Converting the image with dd =="
 
-$QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" -O "$IMGFMT"
+$QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" conv=notrunc -O "$IMGFMT"
 TEST_IMG="$TEST_IMG.out" _check_test_img
 
 echo

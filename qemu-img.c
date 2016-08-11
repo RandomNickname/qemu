@@ -174,7 +174,8 @@ static void QEMU_NORETURN help(void)
            "  'count=N' copy only N input blocks\n"
            "  'if=FILE' read from FILE\n"
            "  'of=FILE' write to FILE\n"
-           "  'skip=N' skip N bs-sized blocks at the start of input\n";
+           "  'skip=N' skip N bs-sized blocks at the start of input\n"
+           "  'conv=notrunc' do not truncate the output file\n";
 
     printf("%s\nSupported formats:", help_msg);
     bdrv_iterate_format(format_print, NULL);
@@ -3807,10 +3808,12 @@ out:
 #define C_IF      04
 #define C_OF      010
 #define C_SKIP    020
+#define C_CONV    040
 
 struct DdInfo {
     unsigned int flags;
     int64_t count;
+    unsigned int conv;
 };
 
 struct DdIo {
@@ -3894,6 +3897,21 @@ static int img_dd_skip(const char *arg,
     return 0;
 }
 
+#define C_NOTRUNC 01
+
+static int img_dd_conv(const char *arg,
+                       struct DdIo *in, struct DdIo *out,
+                       struct DdInfo *dd)
+{
+    if (!strcmp(arg, "notrunc")) {
+        dd->conv |= C_NOTRUNC;
+        return 0;
+    } else {
+        error_report("invalid conversion: '%s'", arg);
+        return 1;
+    }
+}
+
 static int img_dd(int argc, char **argv)
 {
     int ret = 0;
@@ -3913,6 +3931,7 @@ static int img_dd(int argc, char **argv)
     struct DdInfo dd = {
         .flags = 0,
         .count = 0,
+        .conv = 0
     };
     struct DdIo in = {
         .bsz = 512, /* Block size is by default 512 bytes */
@@ -3933,6 +3952,7 @@ static int img_dd(int argc, char **argv)
         { "if", img_dd_if, C_IF },
         { "of", img_dd_of, C_OF },
         { "skip", img_dd_skip, C_SKIP },
+        { "conv", img_dd_conv, C_CONV },
         { NULL, NULL, 0 }
     };
     const struct option long_options[] = {
