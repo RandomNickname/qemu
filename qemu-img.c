@@ -175,6 +175,7 @@ static void QEMU_NORETURN help(void)
            "  'if=FILE' read from FILE\n"
            "  'of=FILE' write to FILE\n"
            "  'skip=N' skip N bs-sized blocks at the start of input\n"
+           "  'seek=N' seek N bs-sized blocks at the start of output\n"
            "  'conv=notrunc' do not truncate the output file\n";
 
     printf("%s\nSupported formats:", help_msg);
@@ -3808,7 +3809,8 @@ out:
 #define C_IF      04
 #define C_OF      010
 #define C_SKIP    020
-#define C_CONV    040
+#define C_SEEK    040
+#define C_CONV    0100
 
 struct DdInfo {
     unsigned int flags;
@@ -3897,6 +3899,22 @@ static int img_dd_skip(const char *arg,
     return 0;
 }
 
+static int img_dd_seek(const char *arg,
+                       struct DdIo *in, struct DdIo *out,
+                       struct DdInfo *dd)
+{
+    char *end;
+
+    out->offset = qemu_strtosz_suffix(arg, &end, QEMU_STRTOSZ_DEFSUFFIX_B);
+
+    if (out->offset < 0 || *end) {
+        error_report("invalid number: '%s'", arg);
+        return 1;
+    }
+
+    return 0;
+}
+
 #define C_NOTRUNC 01
 
 static int img_dd_conv(const char *arg,
@@ -3927,7 +3945,7 @@ static int img_dd(int argc, char **argv)
     const char *out_fmt = "raw";
     const char *fmt = NULL;
     const char *out_filename;
-    int64_t size = 0, out_size;
+    int64_t size = 0, out_size = 0;
     int64_t block_count = 0, out_pos, in_pos;
     struct DdInfo dd = {
         .flags = 0,
@@ -3953,6 +3971,7 @@ static int img_dd(int argc, char **argv)
         { "if", img_dd_if, C_IF },
         { "of", img_dd_of, C_OF },
         { "skip", img_dd_skip, C_SKIP },
+        { "seek", img_dd_seek, C_SEEK },
         { "conv", img_dd_conv, C_CONV },
         { NULL, NULL, 0 }
     };
@@ -4019,6 +4038,14 @@ static int img_dd(int argc, char **argv)
         arg = NULL;
     }
 
+    /* Overflow check for seek */
+    if (out.offset > INT64_MAX / out.bsz) {
+        error_report("seek with the block size specified is too large "
+                     "for data type used");
+        ret = -1;
+        goto out;
+    }
+
     if (!(dd.flags & C_IF && dd.flags & C_OF)) {
         error_report("Must specify both input and output files");
         ret = -1;
@@ -4044,9 +4071,9 @@ static int img_dd(int argc, char **argv)
     }
     /* Overflow means the specified offset is beyond input image's size */
     if (in.offset > INT64_MAX / in.bsz || size < in.offset * in.bsz) {
-        out_size = 0;
+        out_size = out.offset * out.bsz;
     } else {
-        out_size = size - in.offset * in.bsz;
+        out_size = size - in.offset * in.bsz + out.offset * out.bsz;
     }
 
     out_filename = out.filename;
@@ -4132,10 +4159,12 @@ static int img_dd(int argc, char **argv)
             goto out;
         }
 
-        if (in.offset <= INT64_MAX / in.bsz && size >= in.offset * in.bsz) {
-            if (blk2sz < out_size) {
-                blk_truncate(blk2, out_size);
+        if (in.offset > INT64_MAX / in.bsz || size < in.offset * in.bsz) {
+            if (blk2sz < out.offset * out.bsz) {
+                blk_truncate(blk2, out.offset * out.bsz);
             }
+        } else if (blk2sz < out_size) {
+            blk_truncate(blk2, out_size);
         }
     }
 
@@ -4152,7 +4181,7 @@ static int img_dd(int argc, char **argv)
 
     in.buf = g_new(uint8_t, in.bsz);
 
-    for (out_pos = 0; in_pos < size; block_count++) {
+    for (out_pos = out.offset * out.bsz; in_pos < size; block_count++) {
         int in_ret, out_ret;
 
         if (in_pos + in.bsz > size) {
