@@ -144,20 +144,20 @@ Parameters to dd subcommand:
 @table @option
 
 @item bs=@var{block_size}
-defines the block size
+Defines the block size
 @item count=@var{blocks}
-sets the number of input blocks to copy. In case 'iflags=count_bytes' is
+Sets the number of input blocks to copy. In case 'iflags=count_bytes' is
 specified, 'blocks' is interpreted as a byte count instead of a block count.
 @item if=@var{input}
-sets the input file
+Sets the input file
 @item of=@var{output}
-sets the output file. dd truncates the output file to zero if 'conv=notrunc'
+Sets the output file. dd truncates the output file to zero if 'conv=notrunc'
 is not specified.
 @item skip=@var{blocks}
-sets the number of input blocks to skip. In case 'iflags=skip_bytes' is
+Sets the number of input blocks to skip. In case 'iflags=skip_bytes' is
 specified, 'blocks' is interpreted as a byte count instead of a block count.
 @item seek=@var{blocks}
-sets the number of output blocks to skip. In case 'oflags=seek_bytes' is
+Sets the number of output blocks to skip. In case 'oflags=seek_bytes' is
 specified, 'blocks' is interpreted as a byte count instead of a block count.
 @item conv=@var{convs}
 Converts the input according to the conversions specified. The conversion list
@@ -165,49 +165,49 @@ is separated using commas.
 
 The conversion list:
 @item notrunc
-Make dd not truncate output file to zero.
+Makes dd not truncate output file to zero.
 @item sync
-Fill every input block size with trailing zero bytes.
+Fills every input block size with trailing zero bytes.
 @item noerror
-Continue after read failures.
+Continues after read failures.
 @item fdatasync
-Synchronize output data just before finishing. This forces a physical write of output data.
+Synchronizes output data just before finishing. This forces a physical write of output data.
 @item fsync
-Synchronize output data just before finishing. This forces a physical write of output data.
+Synchronizes output data just before finishing. This forces a physical write of output data.
 @item excl
-Err if the output file already exists.
+Errs if the output file already exists.
 @item nocreat
-Do not create the output file; the output file must already exist.
+Does not create the output file; the output file must already exist.
 @item sparse
-Seek rather than write NUL output blocks.
+Seeks rather than write NUL output blocks.
 
 @item iflag=@var{flags}
-defines the flags used to read the input file. The flag list is seprated using
+Defines the flags used to read the input file. The flag list is seprated using
 commas.
 @item oflag=@var{flags}
-defines the flags used to write the output file. The flag list is seprated
+Defines the flags used to write the output file. The flag list is seprated
 using commas.
 
 The flag list:
 @item direct
-direct I/O for data.
+Direct I/O for data.
 @item dsync
-synchronised I/O for data.
+Synchronised I/O for data.
 @item sync
-synchronised I/O for data.
+Synchronised I/O for data.
 @item count_bytes
-interpret 'count=blocks' as a byte count. Only iflag.
+Interprets 'count=blocks' as a byte count. Only iflag.
 @item skip_bytes
-interpret 'skip=blocks' as a byte count. Only iflag.
+Interprets 'skip=blocks' as a byte count. Only iflag.
 @item seek_bytes
-interpret 'seek=blocks' as a byte count. Only oflag.
+Interprets 'seek=blocks' as a byte count. Only oflag.
 
 @item status=@var{level}
-Define the level of information to print to stderr.
+Defines the level of information to print to stderr.
 @item none
 Only error messages are printed.
 @item noxfer
-Do not print the final transfer rate.
+Does not print the final transfer rate.
 
 @end table
 
