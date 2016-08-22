@@ -4066,7 +4066,7 @@ static int img_dd(int argc, char **argv)
     const char *fmt = NULL;
     const char *out_filename;
     int64_t size = 0, out_size = 0;
-    int64_t block_count = 0, out_pos, in_pos, sparse_count = 0;
+    int64_t out_pos, in_pos, sparse_count = 0;
     bool writethrough = false;
     int flags = 0;
     int ibsz = 0, obsz = 0, bsz;
@@ -4344,8 +4344,7 @@ static int img_dd(int argc, char **argv)
         }
     }
 
-    if (dd.flags & C_SKIP && (in.offset > INT64_MAX / ibsz ||
-                              size < in.offset * ibsz)) {
+    if (in.offset > INT64_MAX / ibsz || size < in.offset * ibsz) {
         /* We give a warning if the skip option is bigger than the input
          * size and create an empty output disk image (i.e. like dd(1)).
          */
@@ -4357,7 +4356,7 @@ static int img_dd(int argc, char **argv)
 
     in.buf = g_new(uint8_t, in.bsz);
 
-    for (out_pos = out.offset * obsz; in_pos < size; block_count++) {
+    for (out_pos = out.offset * obsz; in_pos < size;) {
         int in_ret, out_ret;
         bsz = in.bsz;
 
