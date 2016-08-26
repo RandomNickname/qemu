@@ -176,7 +176,16 @@ static void QEMU_NORETURN help(void)
            "  'of=FILE' write to FILE\n"
            "  'skip=N' skip N bs-sized blocks at the start of input\n"
            "  'seek=N' seek N bs-sized blocks at the start of output\n"
-           "  'conv=notrunc' do not truncate the output file\n";
+           "  'conv=notrunc' do not truncate the output file\n"
+           "  'iflags=FLAGS' read using the comma-separated flags list\n"
+           "  'oflags=FLAGS' read using the comma-separated flags list\n\n"
+           "List of FLAGS for dd:\n"
+           "  'direct'      use direct I/O for data\n"
+           "  'dsync'       use synchronized I/O for data\n"
+           "  'sync'        use synchronized I/O for data\n"
+           "  'count_bytes' use 'count=N' as a byte count (iflag only)\n"
+           "  'skip_bytes'  use 'skip=N' as a byte count (iflag only)\n"
+           "  'seek_bytes'  use 'seek=N' as a byte count (oflag only)\n";
 
     printf("%s\nSupported formats:", help_msg);
     bdrv_iterate_format(format_print, NULL);
@@ -3811,6 +3820,8 @@ out:
 #define C_SKIP    020
 #define C_SEEK    040
 #define C_CONV    0100
+#define C_IFLAG   0200
+#define C_OFLAG   0400
 
 struct DdInfo {
     unsigned int flags;
@@ -3823,12 +3834,18 @@ struct DdIo {
     char *filename;
     uint8_t *buf;
     int64_t offset;
+    unsigned int flags;
 };
 
 struct DdOpts {
     const char *name;
     int (*f)(const char *, struct DdIo *, struct DdIo *, struct DdInfo *);
     unsigned int flag;
+};
+
+struct DdSymbols {
+    const char *name;
+    unsigned int value;
 };
 
 static int img_dd_bs(const char *arg,
@@ -3930,6 +3947,73 @@ static int img_dd_conv(const char *arg,
     }
 }
 
+#define C_DIRECT      01
+#define C_IOFLAG_SYNC 02
+#define C_DSYNC       04
+#define C_COUNT_BYTES 010
+#define C_SKIP_BYTES  020
+#define C_SEEK_BYTES  040
+
+static int img_dd_flag(const char *arg, struct DdIo *io,
+                       const struct DdSymbols *flags, const char *err_str)
+{
+    int ret = 0;
+    const char *tok;
+    char *str, *tmp;
+
+    tmp = str = g_strdup(arg);
+
+    while (tmp != NULL && !ret) {
+        tok = qemu_strsep(&tmp, ",");
+        int j;
+        for (j = 0; flags[j].name != NULL; j++) {
+            if (!strcmp(tok, flags[j].name)) {
+                io->flags |= flags[j].value;
+                break;
+            }
+        }
+        if (flags[j].name == NULL) {
+            error_report("%s: '%s'", err_str, tok);
+            ret = 1;
+        }
+    }
+
+    g_free(str);
+
+    return ret;
+}
+
+static int img_dd_iflag(const char *arg,
+                        struct DdIo *in, struct DdIo *out,
+                        struct DdInfo *dd)
+{
+    const struct DdSymbols flags[] = {
+        { "direct", C_DIRECT },
+        { "dsync", C_DSYNC },
+        { "sync", C_IOFLAG_SYNC },
+        { "count_bytes", C_COUNT_BYTES },
+        { "skip_bytes", C_SKIP_BYTES },
+        { NULL, 0}
+    };
+
+    return img_dd_flag(arg, in, flags, "invalid input flag");
+}
+
+static int img_dd_oflag(const char *arg,
+                        struct DdIo *in, struct DdIo *out,
+                        struct DdInfo *dd)
+{
+    const struct DdSymbols flags[] = {
+        { "direct", C_DIRECT },
+        { "dsync", C_DSYNC },
+        { "sync", C_IOFLAG_SYNC },
+        { "seek_bytes", C_SEEK_BYTES },
+        { NULL, 0 }
+    };
+
+    return img_dd_flag(arg, out, flags, "invalid output flag");
+}
+
 static int img_dd(int argc, char **argv)
 {
     int ret = 0;
@@ -3947,6 +4031,9 @@ static int img_dd(int argc, char **argv)
     const char *out_filename;
     int64_t size = 0, out_size = 0;
     int64_t block_count = 0, out_pos, in_pos;
+    bool writethrough = false;
+    int flags = 0;
+    int ibsz = 0, obsz = 0;
     struct DdInfo dd = {
         .flags = 0,
         .count = 0,
@@ -3956,13 +4043,15 @@ static int img_dd(int argc, char **argv)
         .bsz = 512, /* Block size is by default 512 bytes */
         .filename = NULL,
         .buf = NULL,
-        .offset = 0
+        .offset = 0,
+        .flags = 0
     };
     struct DdIo out = {
         .bsz = 512,
         .filename = NULL,
         .buf = NULL,
-        .offset = 0
+        .offset = 0,
+        .flags = 0
     };
 
     const struct DdOpts options[] = {
@@ -3973,6 +4062,8 @@ static int img_dd(int argc, char **argv)
         { "skip", img_dd_skip, C_SKIP },
         { "seek", img_dd_seek, C_SEEK },
         { "conv", img_dd_conv, C_CONV },
+        { "iflag", img_dd_iflag, C_IFLAG },
+        { "oflag", img_dd_oflag, C_OFLAG },
         { NULL, NULL, 0 }
     };
     const struct option long_options[] = {
@@ -4038,8 +4129,13 @@ static int img_dd(int argc, char **argv)
         arg = NULL;
     }
 
+    obsz = out.bsz;
+    if (out.flags & C_SEEK_BYTES) {
+        obsz = 1;
+    }
+
     /* Overflow check for seek */
-    if (out.offset > INT64_MAX / out.bsz) {
+    if (out.offset > INT64_MAX / obsz) {
         error_report("seek with the block size specified is too large "
                      "for data type used");
         ret = -1;
@@ -4051,29 +4147,50 @@ static int img_dd(int argc, char **argv)
         ret = -1;
         goto out;
     }
-    blk1 = img_open(image_opts, in.filename, fmt, 0, false, false);
+    /* These flags make sense only for output but we're adding them anyway
+       to have something close to GNU dd(1) */
+    if (in.flags & C_DSYNC || in.flags & C_IOFLAG_SYNC) {
+        writethrough = true;
+    }
+    if (in.flags & C_DIRECT) {
+        flags |= BDRV_O_NOCACHE;
+    }
+
+    blk1 = img_open(image_opts, in.filename, fmt, flags, writethrough, false);
 
     if (!blk1) {
         ret = -1;
         goto out;
     }
+    writethrough = false; /* Reset to the default value */
 
     size = blk_getlength(blk1);
+
     if (size < 0) {
         error_report("Failed to get size for '%s'", in.filename);
         ret = -1;
         goto out;
     }
 
-    if (dd.flags & C_COUNT && dd.count <= INT64_MAX / in.bsz &&
-        dd.count * in.bsz < size) {
-        size = dd.count * in.bsz;
+    ibsz = in.bsz;
+
+    if (in.flags & C_COUNT_BYTES) {
+        ibsz = 1;
+    }
+    if (dd.flags & C_COUNT && dd.count <= INT64_MAX / ibsz &&
+        dd.count * ibsz < size) {
+        size = dd.count * ibsz;
+    }
+
+    ibsz = in.bsz; /* Reset ibsz for the skip option */
+    if (in.flags & C_SKIP_BYTES) {
+        ibsz = 1;
     }
     /* Overflow means the specified offset is beyond input image's size */
-    if (in.offset > INT64_MAX / in.bsz || size < in.offset * in.bsz) {
-        out_size = out.offset * out.bsz;
+    if (in.offset > INT64_MAX / ibsz || size < in.offset * ibsz) {
+        out_size = out.offset * obsz;
     } else {
-        out_size = size - in.offset * in.bsz + out.offset * out.bsz;
+        out_size = size - in.offset * ibsz + out.offset * obsz;
     }
 
     out_filename = out.filename;
@@ -4081,6 +4198,15 @@ static int img_dd(int argc, char **argv)
         qopts = qemu_opts_parse_noisily(qemu_find_opts("source"),
                                         out.filename, true);
         out_filename = qemu_opt_get(qopts, "filename");
+    }
+
+    flags = BDRV_O_RDWR;
+
+    if (out.flags & C_DSYNC || out.flags & C_IOFLAG_SYNC) {
+        writethrough = true;
+    }
+    if (out.flags & C_DIRECT) {
+        flags |= BDRV_O_NOCACHE;
     }
 
     ret = access(out_filename, F_OK); /* Check if file exists */
@@ -4127,8 +4253,10 @@ static int img_dd(int argc, char **argv)
             ret = -1;
             goto out;
         }
-        blk2 = img_open(image_opts, out.filename, out_fmt, BDRV_O_RDWR,
-                        false, false);
+
+        blk2 = img_open(image_opts, out.filename, out_fmt, flags,
+                        writethrough, false);
+
         if (!blk2) {
             ret = -1;
             goto out;
@@ -4136,8 +4264,8 @@ static int img_dd(int argc, char **argv)
     } else {
         int64_t blk2sz = 0;
 
-        blk2 = img_open(image_opts, out.filename, out_fmt, BDRV_O_RDWR,
-                        false, false);
+        blk2 = img_open(image_opts, out.filename, out_fmt, flags,
+                        writethrough, false);
         if (!blk2) {
             ret = -1;
             goto out;
@@ -4159,29 +4287,29 @@ static int img_dd(int argc, char **argv)
             goto out;
         }
 
-        if (in.offset > INT64_MAX / in.bsz || size < in.offset * in.bsz) {
-            if (blk2sz < out.offset * out.bsz) {
-                blk_truncate(blk2, out.offset * out.bsz);
+        if (in.offset > INT64_MAX / ibsz || size < in.offset * ibsz) {
+            if (blk2sz < out.offset * obsz) {
+                blk_truncate(blk2, out.offset * obsz);
             }
         } else if (blk2sz < out_size) {
             blk_truncate(blk2, out_size);
         }
     }
 
-    if (dd.flags & C_SKIP && (in.offset > INT64_MAX / in.bsz ||
-                              size < in.offset * in.bsz)) {
+    if (dd.flags & C_SKIP && (in.offset > INT64_MAX / ibsz ||
+                              size < in.offset * ibsz)) {
         /* We give a warning if the skip option is bigger than the input
          * size and create an empty output disk image (i.e. like dd(1)).
          */
         error_report("%s: cannot skip to specified offset", in.filename);
         in_pos = size;
     } else {
-        in_pos = in.offset * in.bsz;
+        in_pos = in.offset * ibsz;
     }
 
     in.buf = g_new(uint8_t, in.bsz);
 
-    for (out_pos = out.offset * out.bsz; in_pos < size; block_count++) {
+    for (out_pos = out.offset * obsz; in_pos < size; block_count++) {
         int in_ret, out_ret;
 
         if (in_pos + in.bsz > size) {

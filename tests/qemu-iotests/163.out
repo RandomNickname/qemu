@@ -1,0 +1,135 @@
+QA output created by 163
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 145408
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with skip=1 iflag=skip_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 145408
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with skip=9 iflag=skip_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 145408
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with skip=37 iflag=skip_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 145408
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with skip=90K iflag=skip_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 145408
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with skip=12M iflag=skip_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 350208
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with count=2 iflag=count_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 350208
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with count=19 iflag=count_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 350208
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with count=75 iflag=count_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 350208
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with count=24K iflag=count_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 350208
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with count=12M iflag=count_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 524288/524288 bytes at offset 350208
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with count=143G iflag=count_bytes ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+*** done
