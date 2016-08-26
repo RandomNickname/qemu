@@ -3919,14 +3919,15 @@ static int img_dd(int argc, char **argv)
     char *tmp;
     BlockDriver *drv = NULL, *proto_drv = NULL;
     BlockBackend *blk1 = NULL, *blk2 = NULL;
-    QemuOpts *opts = NULL;
+    QemuOpts *opts = NULL, *qopts = NULL;
     QemuOptsList *create_opts = NULL;
     Error *local_err = NULL;
     bool image_opts = false;
     int c, i;
     const char *out_fmt = "raw";
     const char *fmt = NULL;
-    int64_t size = 0;
+    const char *out_filename;
+    int64_t size = 0, out_size;
     int64_t block_count = 0, out_pos, in_pos;
     struct DdInfo dd = {
         .flags = 0,
@@ -4030,36 +4031,6 @@ static int img_dd(int argc, char **argv)
         goto out;
     }
 
-    drv = bdrv_find_format(out_fmt);
-    if (!drv) {
-        error_report("Unknown file format");
-        ret = -1;
-        goto out;
-    }
-    proto_drv = bdrv_find_protocol(out.filename, true, &local_err);
-
-    if (!proto_drv) {
-        error_report_err(local_err);
-        ret = -1;
-        goto out;
-    }
-    if (!drv->create_opts) {
-        error_report("Format driver '%s' does not support image creation",
-                     drv->format_name);
-        ret = -1;
-        goto out;
-    }
-    if (!proto_drv->create_opts) {
-        error_report("Protocol driver '%s' does not support image creation",
-                     proto_drv->format_name);
-        ret = -1;
-        goto out;
-    }
-    create_opts = qemu_opts_append(create_opts, drv->create_opts);
-    create_opts = qemu_opts_append(create_opts, proto_drv->create_opts);
-
-    opts = qemu_opts_create(create_opts, NULL, 0, &error_abort);
-
     size = blk_getlength(blk1);
     if (size < 0) {
         error_report("Failed to get size for '%s'", in.filename);
@@ -4071,31 +4042,101 @@ static int img_dd(int argc, char **argv)
         dd.count * in.bsz < size) {
         size = dd.count * in.bsz;
     }
-
     /* Overflow means the specified offset is beyond input image's size */
-    if (dd.flags & C_SKIP && (in.offset > INT64_MAX / in.bsz ||
-                              size < in.bsz * in.offset)) {
-        qemu_opt_set_number(opts, BLOCK_OPT_SIZE, 0, &error_abort);
+    if (in.offset > INT64_MAX / in.bsz || size < in.offset * in.bsz) {
+        out_size = 0;
     } else {
-        qemu_opt_set_number(opts, BLOCK_OPT_SIZE,
-                            size - in.bsz * in.offset, &error_abort);
+        out_size = size - in.offset * in.bsz;
     }
 
-    ret = bdrv_create(drv, out.filename, opts, &local_err);
-    if (ret < 0) {
-        error_reportf_err(local_err,
-                          "%s: error while creating output image: ",
-                          out.filename);
-        ret = -1;
-        goto out;
+    out_filename = out.filename;
+    if (image_opts) {
+        qopts = qemu_opts_parse_noisily(qemu_find_opts("source"),
+                                        out.filename, true);
+        out_filename = qemu_opt_get(qopts, "filename");
     }
 
-    blk2 = img_open(image_opts, out.filename, out_fmt, BDRV_O_RDWR,
-                    false, false);
+    ret = access(out_filename, F_OK); /* Check if file exists */
 
-    if (!blk2) {
-        ret = -1;
-        goto out;
+    if (ret == -1) {
+        ret = 0; /* Reset */
+        drv = bdrv_find_format(out_fmt);
+        if (!drv) {
+            error_report("Unknown file format");
+            ret = -1;
+            goto out;
+        }
+        proto_drv = bdrv_find_protocol(out.filename, true, &local_err);
+
+        if (!proto_drv) {
+            error_report_err(local_err);
+            ret = -1;
+            goto out;
+        }
+        if (!drv->create_opts) {
+            error_report("Format driver '%s' does not support image creation",
+                         drv->format_name);
+            ret = -1;
+            goto out;
+        }
+        if (!proto_drv->create_opts) {
+            error_report("Protocol driver '%s' does not support image creation",
+                         proto_drv->format_name);
+            ret = -1;
+            goto out;
+        }
+        create_opts = qemu_opts_append(create_opts, drv->create_opts);
+        create_opts = qemu_opts_append(create_opts, proto_drv->create_opts);
+
+        opts = qemu_opts_create(create_opts, NULL, 0, &error_abort);
+
+        qemu_opt_set_number(opts, BLOCK_OPT_SIZE, out_size, &error_abort);
+
+        ret = bdrv_create(drv, out.filename, opts, &local_err);
+        if (ret < 0) {
+            error_reportf_err(local_err,
+                              "%s: error while creating output image: ",
+                              out.filename);
+            ret = -1;
+            goto out;
+        }
+        blk2 = img_open(image_opts, out.filename, out_fmt, BDRV_O_RDWR,
+                        false, false);
+        if (!blk2) {
+            ret = -1;
+            goto out;
+        }
+    } else {
+        int64_t blk2sz = 0;
+
+        blk2 = img_open(image_opts, out.filename, out_fmt, BDRV_O_RDWR,
+                        false, false);
+        if (!blk2) {
+            ret = -1;
+            goto out;
+        }
+
+        if (!(dd.conv & C_NOTRUNC)) {
+            /* We make conv=notrunc mandatory for the moment to avoid
+               accidental destruction of the output image. Needs to be
+               changed when a better solution is found */
+            error_report("conv=notrunc not specified");
+            ret = -1;
+            goto out;
+        }
+
+        blk2sz = blk_getlength(blk2);
+        if (blk2sz < 0) {
+            error_report("Failed to get size for '%s'", in.filename);
+            ret = -1;
+            goto out;
+        }
+
+        if (in.offset <= INT64_MAX / in.bsz && size >= in.offset * in.bsz) {
+            if (blk2sz < out_size) {
+                blk_truncate(blk2, out_size);
+            }
+        }
     }
 
     if (dd.flags & C_SKIP && (in.offset > INT64_MAX / in.bsz ||
@@ -4141,6 +4182,7 @@ static int img_dd(int argc, char **argv)
 out:
     g_free(arg);
     qemu_opts_del(opts);
+    qemu_opts_del(qopts);
     qemu_opts_free(create_opts);
     blk_unref(blk1);
     blk_unref(blk2);
