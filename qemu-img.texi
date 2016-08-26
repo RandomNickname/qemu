@@ -159,8 +159,28 @@ specified, 'blocks' is interpreted as a byte count instead of a block count.
 @item seek=@var{blocks}
 sets the number of output blocks to skip. In case 'oflags=seek_bytes' is
 specified, 'blocks' is interpreted as a byte count instead of a block count.
-@item conv=notrunc
-makes dd not truncate output file to zero
+@item conv=@var{convs}
+Converts the input according to the conversions specified. The conversion list
+is separated using commas.
+
+The conversion list:
+@item notrunc
+Make dd not truncate output file to zero.
+@item sync
+Fill every input block size with trailing zero bytes.
+@item noerror
+Continue after read failures.
+@item fdatasync
+Synchronize output data just before finishing. This forces a physical write of output data.
+@item fsync
+Synchronize output data just before finishing. This forces a physical write of output data.
+@item excl
+Err if the output file already exists.
+@item nocreat
+Do not create the output file; the output file must already exist.
+@item sparse
+Seek rather than write NUL output blocks.
+
 @item iflag=@var{flags}
 defines the flags used to read the input file. The flag list is seprated using
 commas.
@@ -355,7 +375,7 @@ skipped. This is useful for formats such as @code{rbd} if the target
 volume has already been created with site specific options that cannot
 be supplied through qemu-img.
 
-@item dd [-f @var{fmt}] [-O @var{output_fmt}] [bs=@var{block_size}] [count=@var{blocks}] [skip=@var{blocks}] [seek=@var{blocks}] [conv=notrunc] [iflag=@var{flags}] [oflag=@var{flags}] if=@var{input} of=@var{output}
+@item dd [-f @var{fmt}] [-O @var{output_fmt}] [bs=@var{block_size}] [count=@var{blocks}] [skip=@var{blocks}] [seek=@var{blocks}] [conv=@var{convs}] [iflag=@var{flags}] [oflag=@var{flags}] if=@var{input} of=@var{output}
 
 Dd copies from @var{input} file to @var{output} file converting it from
 @var{fmt} format to @var{output_fmt} format.

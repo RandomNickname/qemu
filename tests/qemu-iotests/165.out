@@ -1,0 +1,33 @@
+QA output created by 165
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 217088/217088 bytes at offset 220160
+212 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with conv=excl ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Converting the image with dd with conv=excl ==
+qemu-img: failed to open 'TEST_DIR/t.IMGFMT.out': File exists
+
+== Creating image ==
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=1048576
+No errors were found on the image.
+wrote 336896/336896 bytes at offset 492544
+329 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+== Converting the image with dd with conv=nocreat ==
+No errors were found on the image.
+
+== Compare the images with qemu-img compare ==
+Images are identical.
+
+== Converting the image with dd with conv=nocreat ==
+qemu-img: Failed to open 'TEST_DIR/t.IMGFMT.out': No such file or directory
+
+*** done

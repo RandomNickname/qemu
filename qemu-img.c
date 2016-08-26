@@ -176,9 +176,19 @@ static void QEMU_NORETURN help(void)
            "  'of=FILE' write to FILE\n"
            "  'skip=N' skip N bs-sized blocks at the start of input\n"
            "  'seek=N' seek N bs-sized blocks at the start of output\n"
-           "  'conv=notrunc' do not truncate the output file\n"
+           "  'conv=CONVS' do not truncate the output file\n"
            "  'iflags=FLAGS' read using the comma-separated flags list\n"
            "  'oflags=FLAGS' read using the comma-separated flags list\n\n"
+           "List of CONVS for dd:\n"
+           "  'notrunc'   do not truncate the output file\n"
+           "  'noerror'   continue in the event of read errors\n"
+           "  'excl'      fail if output already exists\n"
+           "  'nocreat'   do not create the output file\n"
+           "  'fsync'     physically write output file data before finishing\n"
+           "  'fdatasync' physically write output file data before finishing\n"
+           "  'sync'      pad every input block with NULs\n"
+           "  'sparse'    seek rather than write the output for NUL input"
+           " blocks\n\n"
            "List of FLAGS for dd:\n"
            "  'direct'      use direct I/O for data\n"
            "  'dsync'       use synchronized I/O for data\n"
@@ -3932,21 +3942,6 @@ static int img_dd_seek(const char *arg,
     return 0;
 }
 
-#define C_NOTRUNC 01
-
-static int img_dd_conv(const char *arg,
-                       struct DdIo *in, struct DdIo *out,
-                       struct DdInfo *dd)
-{
-    if (!strcmp(arg, "notrunc")) {
-        dd->conv |= C_NOTRUNC;
-        return 0;
-    } else {
-        error_report("invalid conversion: '%s'", arg);
-        return 1;
-    }
-}
-
 #define C_DIRECT      01
 #define C_IOFLAG_SYNC 02
 #define C_DSYNC       04
@@ -3954,7 +3949,7 @@ static int img_dd_conv(const char *arg,
 #define C_SKIP_BYTES  020
 #define C_SEEK_BYTES  040
 
-static int img_dd_flag(const char *arg, struct DdIo *io,
+static int img_dd_flag(const char *arg, struct DdIo *io, struct DdInfo *dd,
                        const struct DdSymbols *flags, const char *err_str)
 {
     int ret = 0;
@@ -3968,7 +3963,11 @@ static int img_dd_flag(const char *arg, struct DdIo *io,
         int j;
         for (j = 0; flags[j].name != NULL; j++) {
             if (!strcmp(tok, flags[j].name)) {
-                io->flags |= flags[j].value;
+                if (dd) {
+                    dd->conv |= flags[j].value;
+                } else {
+                    io->flags |= flags[j].value;
+                }
                 break;
             }
         }
@@ -3996,7 +3995,7 @@ static int img_dd_iflag(const char *arg,
         { NULL, 0}
     };
 
-    return img_dd_flag(arg, in, flags, "invalid input flag");
+    return img_dd_flag(arg, in, NULL, flags, "invalid input flag");
 }
 
 static int img_dd_oflag(const char *arg,
@@ -4011,8 +4010,45 @@ static int img_dd_oflag(const char *arg,
         { NULL, 0 }
     };
 
-    return img_dd_flag(arg, out, flags, "invalid output flag");
+    return img_dd_flag(arg, out, NULL, flags, "invalid output flag");
 }
+
+#define C_NOTRUNC   01
+#define C_SYNC      02
+#define C_NOERROR   04
+#define C_FDATASYNC 010
+#define C_FSYNC     020
+#define C_EXCL      040
+#define C_NOCREAT   0100
+#define C_SPARSE    0200
+
+static int img_dd_conv(const char *arg,
+                       struct DdIo *in, struct DdIo *out,
+                       struct DdInfo *dd)
+{
+    int ret;
+    const struct DdSymbols conv[] = {
+        { "notrunc", C_NOTRUNC },
+        { "sync", C_SYNC },
+        { "noerror", C_NOERROR },
+        { "fdatasync", C_FDATASYNC },
+        { "fsync", C_FSYNC },
+        { "excl", C_EXCL },
+        { "nocreat", C_NOCREAT },
+        { "sparse", C_SPARSE },
+        { NULL, 0 }
+    };
+
+    ret = img_dd_flag(arg, NULL, dd, conv, "invalid conversion");
+
+    if (ret == 0 && dd->conv & C_EXCL && dd->conv & C_NOCREAT) {
+        error_report("cannot combine excl and nocreat");
+        ret = 1;
+    }
+
+    return ret;
+}
+
 
 static int img_dd(int argc, char **argv)
 {
@@ -4030,10 +4066,10 @@ static int img_dd(int argc, char **argv)
     const char *fmt = NULL;
     const char *out_filename;
     int64_t size = 0, out_size = 0;
-    int64_t block_count = 0, out_pos, in_pos;
+    int64_t block_count = 0, out_pos, in_pos, sparse_count = 0;
     bool writethrough = false;
     int flags = 0;
-    int ibsz = 0, obsz = 0;
+    int ibsz = 0, obsz = 0, bsz;
     struct DdInfo dd = {
         .flags = 0,
         .count = 0,
@@ -4212,6 +4248,11 @@ static int img_dd(int argc, char **argv)
     ret = access(out_filename, F_OK); /* Check if file exists */
 
     if (ret == -1) {
+        if (dd.conv & C_NOCREAT) {
+            error_report("Failed to open '%s': %s",
+                         out_filename, strerror(errno));
+            goto out;
+        }
         ret = 0; /* Reset */
         drv = bdrv_find_format(out_fmt);
         if (!drv) {
@@ -4219,6 +4260,7 @@ static int img_dd(int argc, char **argv)
             ret = -1;
             goto out;
         }
+        local_err = NULL;
         proto_drv = bdrv_find_protocol(out.filename, true, &local_err);
 
         if (!proto_drv) {
@@ -4263,6 +4305,12 @@ static int img_dd(int argc, char **argv)
         }
     } else {
         int64_t blk2sz = 0;
+
+        if (dd.conv & C_EXCL) {
+            error_report("failed to open '%s': File exists", out.filename);
+            ret = -1;
+            goto out;
+        }
 
         blk2 = img_open(image_opts, out.filename, out_fmt, flags,
                         writethrough, false);
@@ -4311,19 +4359,42 @@ static int img_dd(int argc, char **argv)
 
     for (out_pos = out.offset * obsz; in_pos < size; block_count++) {
         int in_ret, out_ret;
+        bsz = in.bsz;
 
         if (in_pos + in.bsz > size) {
-            in_ret = blk_pread(blk1, in_pos, in.buf, size - in_pos);
-        } else {
-            in_ret = blk_pread(blk1, in_pos, in.buf, in.bsz);
+            bsz = size - in_pos;
         }
+
+        if (dd.conv & C_SYNC) {
+            memset(in.buf, 0, in.bsz);
+        }
+        in_ret = blk_pread(blk1, in_pos, in.buf, bsz);
+
         if (in_ret < 0) {
             error_report("error while reading from input image file: %s",
                          strerror(-in_ret));
-            ret = -1;
-            goto out;
+            if (!(dd.conv & C_NOERROR)) {
+                ret = -1;
+                goto out;
+            }
+            if (!(dd.conv & C_SYNC)) {
+                in_pos += bsz;
+                continue;
+            }
+            in_ret = bsz;
         }
         in_pos += in_ret;
+
+        if (dd.conv & C_SPARSE) {
+            if (buffer_is_zero(in.buf, bsz)) {
+                sparse_count++;
+                continue;
+            }
+            if (sparse_count > 0) {
+                out_pos += sparse_count * in.bsz;
+                sparse_count = 0;
+            }
+        }
 
         out_ret = blk_pwrite(blk2, out_pos, in.buf, in_ret, 0);
 
@@ -4334,6 +4405,10 @@ static int img_dd(int argc, char **argv)
             goto out;
         }
         out_pos += out_ret;
+    }
+
+    if (dd.conv & C_FDATASYNC || dd.conv & C_FSYNC) {
+        blk_flush(blk2);
     }
 
 out:
