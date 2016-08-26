@@ -58,7 +58,7 @@ for skip in $TEST_SKIP_BLOCKS; do
     echo "== Converting the image with dd with skip=$skip iflag=skip_bytes =="
 
     $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" skip="$skip" \
-        iflag=skip_bytes conv=notrunc -O "$IMGFMT" 2> /dev/null
+        iflag=skip_bytes conv=notrunc -O "$IMGFMT" status=none
     TEST_IMG="$TEST_IMG.out" _check_test_img
     dd if="$TEST_IMG" of="$TEST_IMG.out.dd" skip="$skip" iflag=skip_bytes \
         conv=notrunc status=none
@@ -86,7 +86,7 @@ for count in $TEST_COUNT_BLOCKS; do
          "iflag=count_bytes =="
 
     $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" count="$skip" \
-        iflag=count_bytes conv=notrunc -O "$IMGFMT" 2> /dev/null
+        iflag=count_bytes conv=notrunc -O "$IMGFMT" status=none
     TEST_IMG="$TEST_IMG.out" _check_test_img
     dd if="$TEST_IMG" of="$TEST_IMG.out.dd" count="$skip" iflag=count_bytes \
         conv=notrunc status=none

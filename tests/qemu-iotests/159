@@ -56,7 +56,7 @@ for bs in $TEST_SIZES; do
     echo "== Converting the image with dd with a block size of $bs =="
 
     $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" bs=$bs conv=notrunc \
-        -O "$IMGFMT"
+        -O "$IMGFMT" status=none
     TEST_IMG="$TEST_IMG.out" _check_test_img
 
     echo

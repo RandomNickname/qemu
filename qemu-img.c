@@ -178,7 +178,11 @@ static void QEMU_NORETURN help(void)
            "  'seek=N' seek N bs-sized blocks at the start of output\n"
            "  'conv=CONVS' do not truncate the output file\n"
            "  'iflags=FLAGS' read using the comma-separated flags list\n"
-           "  'oflags=FLAGS' read using the comma-separated flags list\n\n"
+           "  'oflags=FLAGS' read using the comma-separated flags list\n"
+           "  'status=LEVEL' the LEVEL of information to print to stderr\n\n"
+           "List of LEVELS for dd:\n"
+           "  'none'   surpresses everything but error messages\n"
+           "  'noxfer' surpresses the final transfer statistics\n\n"
            "List of CONVS for dd:\n"
            "  'notrunc'   do not truncate the output file\n"
            "  'noerror'   continue in the event of read errors\n"
@@ -3832,11 +3836,13 @@ out:
 #define C_CONV    0100
 #define C_IFLAG   0200
 #define C_OFLAG   0400
+#define C_STATUS  01000
 
 struct DdInfo {
     unsigned int flags;
     int64_t count;
     unsigned int conv;
+    unsigned int status;
 };
 
 struct DdIo {
@@ -4049,6 +4055,30 @@ static int img_dd_conv(const char *arg,
     return ret;
 }
 
+#define C_STATUS_DEFAULT  00
+#define C_STATUS_NONE     01
+#define C_STATUS_NOXFER   02
+
+static int img_dd_status(const char *arg,
+                         struct DdIo *in, struct DdIo *out,
+                         struct DdInfo *dd)
+{
+    const struct DdSymbols dd_status[] = {
+        { "none", C_STATUS_NONE },
+        { "noxfer", C_STATUS_NOXFER },
+        { NULL, 0 }
+    };
+
+    for (int j = 0; dd_status[j].name != NULL; j++) {
+        if (!strcmp(arg, dd_status[j].name)) {
+            dd->status = dd_status[j].value;
+            return 0;
+        }
+    }
+
+    error_report("invalid status level: '%s'", arg);
+    return 1;
+}
 
 static int img_dd(int argc, char **argv)
 {
@@ -4067,13 +4097,16 @@ static int img_dd(int argc, char **argv)
     const char *out_filename;
     int64_t size = 0, out_size = 0;
     int64_t out_pos, in_pos, sparse_count = 0;
+    int64_t in_read = 0, out_wrt = 0; /* Read/write count for status= */
     bool writethrough = false;
     int flags = 0;
     int ibsz = 0, obsz = 0, bsz;
+    struct timeval starttv, endtv;
     struct DdInfo dd = {
         .flags = 0,
         .count = 0,
-        .conv = 0
+        .conv = 0,
+        .status = C_STATUS_DEFAULT
     };
     struct DdIo in = {
         .bsz = 512, /* Block size is by default 512 bytes */
@@ -4100,6 +4133,7 @@ static int img_dd(int argc, char **argv)
         { "conv", img_dd_conv, C_CONV },
         { "iflag", img_dd_iflag, C_IFLAG },
         { "oflag", img_dd_oflag, C_OFLAG },
+        { "status", img_dd_status, C_STATUS },
         { NULL, NULL, 0 }
     };
     const struct option long_options[] = {
@@ -4345,16 +4379,21 @@ static int img_dd(int argc, char **argv)
     }
 
     if (in.offset > INT64_MAX / ibsz || size < in.offset * ibsz) {
-        /* We give a warning if the skip option is bigger than the input
-         * size and create an empty output disk image (i.e. like dd(1)).
-         */
-        error_report("%s: cannot skip to specified offset", in.filename);
+        if (!(dd.status & C_STATUS_NONE)) {
+            /* We give a warning if the skip option is bigger than the input
+             * size and create an empty output disk image (i.e. like dd(1)).
+             */
+            error_report("%s: cannot skip to specified offset", in.filename);
+        }
         in_pos = size;
     } else {
         in_pos = in.offset * ibsz;
     }
 
     in.buf = g_new(uint8_t, in.bsz);
+    if (dd.status & C_STATUS_DEFAULT) {
+        qemu_gettimeofday(&starttv);
+    }
 
     for (out_pos = out.offset * obsz; in_pos < size;) {
         int in_ret, out_ret;
@@ -4383,10 +4422,12 @@ static int img_dd(int argc, char **argv)
             in_ret = bsz;
         }
         in_pos += in_ret;
+        in_read += in_ret;
 
         if (dd.conv & C_SPARSE) {
             if (buffer_is_zero(in.buf, bsz)) {
                 sparse_count++;
+                out_wrt += bsz;
                 continue;
             }
             if (sparse_count > 0) {
@@ -4404,10 +4445,44 @@ static int img_dd(int argc, char **argv)
             goto out;
         }
         out_pos += out_ret;
+        out_wrt += out_ret;
     }
 
     if (dd.conv & C_FDATASYNC || dd.conv & C_FSYNC) {
         blk_flush(blk2);
+    }
+
+    if (dd.status & C_STATUS_NOXFER || dd.status & C_STATUS_DEFAULT) {
+        fprintf(stderr, "%" PRId64 "+%" PRId64 " records in\n",
+                in_read / in.bsz, in_read % in.bsz);
+        fprintf(stderr, "%" PRId64 "+%" PRId64 " records out\n",
+                out_wrt / out.bsz, out_wrt % out.bsz);
+    }
+    if (dd.status & C_STATUS_DEFAULT) {
+        gchar *hsize;
+        double nb_microsec;
+
+        qemu_gettimeofday(&endtv);
+        qemu_timersub(&endtv, &starttv, &endtv);
+
+        if (out_wrt >= 1024) {
+            /* human-readable size in IEC format (base 1024) */
+            gchar *iecsize = g_format_size_full(out_wrt,
+                                                G_FORMAT_SIZE_IEC_UNITS);
+            /* Standard base (e.g. KB = 1000 bytes) */
+            hsize = g_format_size(out_wrt);
+            fprintf(stderr, "%" PRId64 " bytes (%s, %s) copied, ", out_wrt,
+                    hsize, iecsize);
+            g_free(hsize);
+            g_free(iecsize);
+        } else {
+            fprintf(stderr, "%" PRId64 " copied, ", out_wrt);
+        }
+        nb_microsec = (double)endtv.tv_sec * 1000000 + endtv.tv_usec;
+        hsize = g_format_size((double)out_wrt * 1000000 / nb_microsec);
+        fprintf(stderr, "%ld.%08ld s, %s/s\n", (long)endtv.tv_sec,
+                (long)endtv.tv_usec, hsize);
+        g_free(hsize);
     }
 
 out:

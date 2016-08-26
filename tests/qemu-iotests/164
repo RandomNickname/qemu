@@ -57,7 +57,7 @@ for seek in $TEST_SEEK_BLOCKS; do
     echo "== Converting the image with dd with seek=$seek oflag=seek_bytes =="
 
     $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" seek="$seek" \
-        oflag=seek_bytes conv=notrunc -O "$IMGFMT" 2> /dev/null
+        oflag=seek_bytes conv=notrunc -O "$IMGFMT" status=none
     TEST_IMG="$TEST_IMG.out" _check_test_img
     dd if="$TEST_IMG" of="$TEST_IMG.out.dd" seek="$seek" \
         oflag=seek_bytes status=none
@@ -83,7 +83,7 @@ echo "== Converting the image with dd with seek=$seek" \
      "oflag=seek_bytes,direct =="
 
 $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" seek="$seek" \
-    oflag=seek_bytes conv=notrunc -O "$IMGFMT" 2> /dev/null
+    oflag=seek_bytes conv=notrunc -O "$IMGFMT" status=none
 TEST_IMG="$TEST_IMG.out" _check_test_img
 dd if="$TEST_IMG" of="$TEST_IMG.out.dd" seek="$seek" \
     oflag=seek_bytes,direct conv=notrunc status=none

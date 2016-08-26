@@ -53,7 +53,8 @@ $QEMU_IO -c "write -P 0xa 215k 212k" "$TEST_IMG" | _filter_qemu_io
 echo
 echo "== Converting the image with dd with conv=excl =="
 
-$QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" conv=excl,notrunc -O "$IMGFMT"
+$QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" conv=excl,notrunc \
+          -O "$IMGFMT" status=none
 
 TEST_IMG="$TEST_IMG.out" _check_test_img
 
@@ -67,7 +68,7 @@ $QEMU_IMG compare "$TEST_IMG.out.dd" "$TEST_IMG.out"
 echo
 echo "== Converting the image with dd with conv=excl =="
 
-$QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" conv=excl,notrunc \
+$QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" conv=excl,notrunc status=none \
           -O "$IMGFMT" 2>&1 | sed -e "s#$TEST_DIR#TEST_DIR#g" \
                                   -e "s#$IMGFMT#IMGFMT#g"
 
@@ -83,7 +84,7 @@ echo
 echo "== Converting the image with dd with conv=nocreat =="
 
 $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" conv=nocreat,notrunc \
-          -O "$IMGFMT"
+          -O "$IMGFMT" status=none
 
 TEST_IMG="$TEST_IMG.out" _check_test_img
 
@@ -100,8 +101,8 @@ echo
 echo "== Converting the image with dd with conv=nocreat =="
 
 $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" conv=nocreat,notrunc \
-          -O "$IMGFMT" 2>&1 | sed -e "s#$TEST_DIR#TEST_DIR#g" \
-                                  -e "s#$IMGFMT#IMGFMT#g"
+          -O "$IMGFMT" 2>&1 status=none | sed -e "s#$TEST_DIR#TEST_DIR#g" \
+                                              -e "s#$IMGFMT#IMGFMT#g"
 
 echo
 echo "*** done"

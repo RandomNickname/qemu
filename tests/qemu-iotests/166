@@ -56,7 +56,7 @@ echo
 echo "== Converting the image with dd with conv=sparse =="
 
 $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" conv=sparse,notrunc \
-          -O "$IMGFMT"
+          -O "$IMGFMT" status=none
 
 TEST_IMG="$TEST_IMG.out" _check_test_img
 

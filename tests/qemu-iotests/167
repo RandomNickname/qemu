@@ -1,6 +1,6 @@
 #! /bin/bash
 #
-# qemu-img dd test for the seek option
+# qemu-img dd test for the status option
 #
 # Copyright (C) 2016 Reda Sallahi
 #
@@ -29,7 +29,8 @@ status=1
 _cleanup()
 {
     _cleanup_test_img
-    rm -f "$TEST_IMG.out" "$TEST_IMG.out.dd"
+    rm -f "$TEST_IMG.out" "$TEST_IMG.out.stat" "$TEST_IMG.out.dd" \
+          "$TEST_IMG.out.dd.stat"
 }
 trap "_cleanup; exit \$status" 0 1 2 3 15
 
@@ -41,31 +42,34 @@ _supported_fmt raw
 _supported_proto file
 _supported_os Linux
 
-TEST_SEEK_BLOCKS="1 2 30 30K"
+echo
+echo "== Creating image =="
 
-for seek in $TEST_SEEK_BLOCKS; do
-    echo
-    echo "== Creating image =="
+size=1M
+_make_test_img $size
+_check_test_img
 
-    size=1M
-    _make_test_img $size
-    _check_test_img
-    $QEMU_IO -c "write -P 0xa 13k 512k" "$TEST_IMG" | _filter_qemu_io
+$QEMU_IO -c "write -P 0xa 149k 512k" "$TEST_IMG" | _filter_qemu_io
 
-    echo
-    echo "== Converting the image with dd with seek=$seek =="
+echo
+echo "== Converting the image with dd status=noxfer =="
 
-    $QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" seek="$seek" conv=notrunc \
-        -O "$IMGFMT" 2> /dev/null status=none
-    TEST_IMG="$TEST_IMG.out" _check_test_img
-    dd if="$TEST_IMG" of="$TEST_IMG.out.dd" seek="$seek" conv=notrunc \
-        status=none
+$QEMU_IMG dd if="$TEST_IMG" of="$TEST_IMG.out" conv=notrunc -O "$IMGFMT" \
+          seek=10 skip=4 status=noxfer 2> "$TEST_IMG.out.stat"
+TEST_IMG="$TEST_IMG.out" _check_test_img
 
-    echo
-    echo "== Compare the images with qemu-img compare =="
+dd if="$TEST_IMG" of="$TEST_IMG.out.dd" conv=notrunc status=noxfer \
+   seek=10 skip=4 2> "$TEST_IMG.out.dd.stat"
 
-    $QEMU_IMG compare "$TEST_IMG.out.dd" "$TEST_IMG.out"
-done
+echo
+echo "== Compare the images with qemu-img compare =="
+
+$QEMU_IMG compare "$TEST_IMG.out" "$TEST_IMG.out.dd"
+
+echo
+echo "== Compare the stat output =="
+
+diff "$TEST_IMG.out.dd.stat" "$TEST_IMG.out.stat"
 
 echo
 echo "*** done"
